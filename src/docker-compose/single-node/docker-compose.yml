@@ -1,0 +1,36 @@
+version: "3.9"
+services:
+  logship-database:
+    container_name: "logship-database"
+    image: ghcr.io/logsink/logship-database:latest
+    network_mode: host
+    restart: always
+    volumes:
+      - ./config/logship-database/appsettings.json:/app/appsettings.json:ro
+      - ./data/kvs:/logship/kvs
+  logship-backend:
+    container_name: "logship-backend"
+    image: ghcr.io/logsink/logship-backend:head
+    network_mode: host
+    restart: always
+    volumes:
+      - ./config/logship-backend/appsettings.json:/app/appsettings.json:ro
+      - ./data/searchdata:/logship/searchdata
+  logship-agent:
+    container_name: "logship-agent"
+    image: ghcr.io/logsink/logship-agent:latest
+    network_mode: host
+    restart: always
+    volumes:
+      - /var/log/journal:/var/log/journal
+      - /proc:/proc
+      - ./config/logship-agent/appsettings.json:/app/appsettings.json:ro
+  logship-grafana-datasource:
+    container_name: "logship-grafana-datasource"
+    image: ghcr.io/logsink/grafana-logship-datasource:latest
+    restart: always
+    network_mode: host
+    volumes:
+      - grafana-data:/var/lib/grafana
+volumes:
+  grafana-data: { }
