@@ -1,0 +1,9 @@
+apiVersion: 1
+datasources:
+  - name: Logship
+    type: logship-datasource
+    isDefault: true
+    jsonData:
+      clusterUrl: http://localhost:5000/
+      dataConsistency: strongconsistency
+      defaultEditorMode: raw

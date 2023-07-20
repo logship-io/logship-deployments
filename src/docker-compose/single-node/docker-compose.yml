@@ -6,16 +6,16 @@ services:
     network_mode: host
     restart: always
     volumes:
-      - ./config/logship-database/appsettings.json:/app/appsettings.json:ro
-      - ./data/kvs:/logship/kvs
+      - ./config/logship-database/appsettings.production.json:/app/appsettings.production.json:ro
+      - ${LS_KEYVALUE_DATA_PATH}:/logship/kvs
   logship-backend:
     container_name: "logship-backend"
     image: ghcr.io/logsink/logship-backend:head
     network_mode: host
     restart: always
     volumes:
-      - ./config/logship-backend/appsettings.json:/app/appsettings.json:ro
-      - ./data/searchdata:/logship/searchdata
+      - ./config/logship-backend/appsettings.production.json:/app/appsettings.production.json:ro
+      - ${LS_SEARCH_DATA_PATH}:/logship/searchdata
   logship-agent:
     container_name: "logship-agent"
     image: ghcr.io/logsink/logship-agent:latest
@@ -31,6 +31,12 @@ services:
     restart: always
     network_mode: host
     volumes:
-      - grafana-data:/var/lib/grafana
-volumes:
-  grafana-data: { }
+      - ${LS_GRAPHANA_DATA_PATH}:/var/lib/grafana
+      - ./config/logship-grafana-datasource/config.yaml:/etc/grafana/provisioning/datasources/default.yaml:ro
+  logship-frontend:
+    container_name: "logship-frontend"
+    image: ghcr.io/logsink/grafana-frontend:latest
+    restart: always
+    network_mode: host
+    volumes:
+      - ./config/logship-frontend/config.yaml:/etc/grafana/provisioning/datasources/default.yaml:ro
