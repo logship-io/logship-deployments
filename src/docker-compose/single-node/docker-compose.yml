@@ -40,3 +40,11 @@ services:
     network_mode: host
     volumes:
       - ./config/logship-frontend/config.yaml:/etc/grafana/provisioning/datasources/default.yaml:ro
+  logship-frontdoor:
+    container_name: "logship-frontdoor"
+    image: nginx
+    restart: always
+    network_mode: host
+    volumes:
+      - ${LS_NGINX_CONFIGURATION}:/etc/nginx/ssl
+      - ./config/nginx/nginx.conf:/etc/nginx/nginx.conf
