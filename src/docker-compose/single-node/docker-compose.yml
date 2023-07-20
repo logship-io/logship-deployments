@@ -42,7 +42,7 @@ services:
       - ./config/logship-frontend/config.yaml:/etc/grafana/provisioning/datasources/default.yaml:ro
   logship-frontdoor:
     container_name: "logship-frontdoor"
-    image: nginx
+    image: docker.io/library/nginx:latest
     restart: always
     network_mode: host
     volumes:
