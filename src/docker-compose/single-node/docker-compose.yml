@@ -10,7 +10,7 @@ services:
       - ${LS_KEYVALUE_DATA_PATH}:/logship/kvs
   logship-backend:
     container_name: "logship-backend"
-    image: ghcr.io/logsink/logship-backend:head
+    image: ghcr.io/logsink/logship-backend:latest
     network_mode: host
     restart: always
     volumes:
@@ -35,7 +35,7 @@ services:
       - ./config/logship-grafana-datasource/config.yaml:/etc/grafana/provisioning/datasources/default.yaml:ro
   logship-frontend:
     container_name: "logship-frontend"
-    image: ghcr.io/logsink/grafana-frontend:latest
+    image: ghcr.io/logsink/logship-frontend:latest
     restart: always
     network_mode: host
     volumes:
