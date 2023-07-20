@@ -47,4 +47,4 @@ services:
     network_mode: host
     volumes:
       - ${LS_NGINX_CONFIGURATION}:/etc/nginx/ssl
-      - ./config/nginx/nginx.conf:/etc/nginx/nginx.conf
+      - ./config/nginx/conf.d:/etc/nginx/conf.d
