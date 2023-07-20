@@ -48,3 +48,8 @@ services:
     volumes:
       - ${LS_NGINX_CONFIGURATION}:/etc/nginx/ssl
       - ./config/nginx/conf.d:/etc/nginx/conf.d
+  logship-public:
+    container_name: "logship-public"
+    image: ghcr.io/logsink/logsink.github.io:latest
+    restart: always
+    network_mode: host
