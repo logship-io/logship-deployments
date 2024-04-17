@@ -1,0 +1,11 @@
+{
+    "files.associations": {
+        "appsettings.*.json": "jsonc"
+    },
+    "json.schemas": [{
+		"fileMatch": ["appsettings.*.json"],
+		"schema": {
+			"allowTrailingCommas": true
+		}
+	}]
+}
