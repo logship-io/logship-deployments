@@ -1,4 +1,5 @@
 #!/bin/sh
+set -euo
 
 if test -t 1; then
     ncolors=$(tput colors)
@@ -128,6 +129,12 @@ opt_database_port='5000'
 opt_database_password="$(head /dev/urandom | tr -dc 'a-zA-Z0-9' | head -c 10)"
 opt_frontend_port='8000'
 opt_tag="latest-pre"
+opt_help=
+opt_agent=
+opt_database=
+opt_frontend=
+opt_cli=
+opt_verbose=
 
 database_config_updated='false'
 database_password_updated='false'
