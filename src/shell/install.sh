@@ -77,6 +77,25 @@ err() {
     exit 1
 }
 
+# Detect architecture
+if [ "$(uname -m)" = "x86_64" ]; then
+    architecture="x64"
+elif [ "$(uname -m)" = "aarch64" ]; then
+    architecture="arm64"
+else
+    err "Unsupported architecture: $(uname -m)"
+fi
+
+# Detect operating system
+if [ "$(uname -s)" = "Darwin" ]; then
+    operating_system="osx"
+elif [ "$(uname -s)" = "Linux" ]; then
+    operating_system="linux"
+else
+    err "Unsupported operating system: $(uname -s)"
+fi
+
+
 verbose_ship() {
     # Was this a waste of time? Maybe
     if [ "$opt_verbose" = 'true' ]; then
@@ -329,7 +348,7 @@ install_agent() {
     service_name="logship-agent"
     config="appsettings.json"
     exe="Logship.Agent.ConsoleHost"
-    file="LogshipAgent-linux-x64.zip"
+    file="LogshipAgent-$operating_system-$architecture.zip"
     tempdir="$(mktemp -d -t "installer-$service_name-XXXXXXXXXXXXXXXX")"
 
     verbose "Using temporary directory $tempdir"
@@ -535,16 +554,15 @@ EOF
 install_database() {
     database_path="$opt_path/database"
     service_name="logship-database"
-    architecture="linux-x64"
     config="appsettings.json"
     exe="Logship.Host.ConsoleHost"
-    file="${service_name}_${architecture}.zip"
+    file="${service_name}_${operating_system}-${architecture}.zip"
     tempdir="$(mktemp -d -t "installer-$service_name-XXXXXXXXXXXXXXXX")"
 
     verbose "Using temporary directory $tempdir"
     info "Downloading $service_name..."
-    verbose "Download URL: https://ar.logship.io/release/${service_name}/${architecture}/${opt_tag}"
-    ensure wget "https://ar.logship.io/release/${service_name}/${architecture}/${opt_tag}" -P "$tempdir" -q --show-progress
+    verbose "Download URL: https://ar.logship.io/release/${service_name}/${operating_system}-${architecture}/${opt_tag}"
+    ensure wget "https://ar.logship.io/release/${service_name}/${operating_system}-${architecture}/${opt_tag}" -P "$tempdir" -q --show-progress
     verbose "Downloaded $service_name."
     run_or_sudo mkdir -p "$opt_data_root"
     run_or_sudo mkdir -p "$database_path"
@@ -632,17 +650,16 @@ EOF
 install_frontend() {
   frontend_path="$opt_path/frontend"
   service_name="logship-frontend"
-  architecture="linux-x64"
   config="appsettings.json"
   exe="fe-react"
-  file="${service_name}_${architecture}.zip"
+  file="${service_name}_${operating_system}-${architecture}.zip"
   tempdir="$(mktemp -d -t "installer-$service_name-XXXXXXXXXXXXXXXX")"
 
   run_or_sudo mkdir -p "$frontend_path"
   verbose "Using temporary directory $tempdir"
   info "Downloading $service_name..."
-  verbose "Download URL: https://ar.logship.io/release/${service_name}/${architecture}/${opt_tag}"
-  ensure wget "https://ar.logship.io/release/${service_name}/${architecture}/${opt_tag}" -P "$tempdir" -q --show-progress
+  verbose "Download URL: https://ar.logship.io/release/${service_name}/${operating_system}-${architecture}/${opt_tag}"
+  ensure wget "https://ar.logship.io/release/${service_name}/${operating_system}-${architecture}/${opt_tag}" -P "$tempdir" -q --show-progress
   verbose "Downloaded $service_name."
 
   verbose "Extracting files..."
@@ -699,7 +716,7 @@ write_uninstall() {
   fi
   run_or_sudo tee -a "$opt_path/uninstall.sh" >/dev/null << EOF
 #!/bin/sh
-read -p "Uninstall logship? (y/n): This will delete everything under \"$opt_path\"" choice
+read -p "Uninstall logship? (y/n): This will delete everything under \"$opt_path\"." choice
 case "\$choice" in
 [Yy]|[Yy][Ee][Ss])
   systemctl disable logship-agent.service
