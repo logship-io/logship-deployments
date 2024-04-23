@@ -129,12 +129,14 @@ opt_database_port='5000'
 opt_database_password="$(head /dev/urandom | tr -dc 'a-zA-Z0-9' | head -c 10)"
 opt_frontend_port='8000'
 opt_tag="latest-pre"
-opt_help=
-opt_agent=
-opt_database=
-opt_frontend=
-opt_cli=
-opt_verbose=
+opt_agent=''
+opt_cli=''
+opt_database=''
+opt_frontend=''
+opt_noinstall=''
+opt_verbose=''
+opt_help=''
+opt_overwrite=''
 
 database_config_updated='false'
 database_password_updated='false'
@@ -274,7 +276,7 @@ run_or_sudo() {
 
 systemd_install() {
     verbose "Creating unit file for $1"
-    sudo tee -a "/lib/systemd/system/$1.service" >/dev/null << EOF
+    sudo tee "/lib/systemd/system/$1.service" >/dev/null <<EOF
 [Unit]
 Description=$1
 Documentation=https://logship.io/
@@ -293,10 +295,7 @@ EOF
 
 write_agent_config() {
     verbose "Writing agent configuration to $1"
-    if [ -e "$1" ]; then
-        run_or_sudo rm -f "$1"
-    fi
-    run_or_sudo tee -a "$1" >/dev/null << EOF
+    run_or_sudo tee "$1" >/dev/null <<EOF
 {
   // Agent output configuration.
   "Output": {
@@ -718,10 +717,7 @@ install_frontend() {
 
 write_uninstall() {
   verbose "Writing uninstall script to $opt_path/uninstall.sh"
-  if [ -e "$opt_path/uninstall.sh" ]; then
-      run_or_sudo rm -f "$opt_path/uninstall.sh"
-  fi
-  run_or_sudo tee -a "$opt_path/uninstall.sh" >/dev/null << EOF
+  run_or_sudo tee "$opt_path/uninstall.sh" >/dev/null <<EOF
 #!/bin/sh
 read -p "Uninstall logship? (y/n): This will delete everything under \"$opt_path\"." choice
 case "\$choice" in
