@@ -1,5 +1,5 @@
 #!/bin/sh
-set -euo
+set -eu
 
 if test -t 1; then
     ncolors=$(tput colors)
@@ -276,7 +276,8 @@ run_or_sudo() {
 
 systemd_install() {
     verbose "Creating unit file for $1"
-    sudo tee "/lib/systemd/system/$1.service" >/dev/null <<EOF
+    tempfile="$(mktemp -t "$1-XXXXXXXXXXXXXXXX")"
+    cat <<EOF > "$tempfile"
 [Unit]
 Description=$1
 Documentation=https://logship.io/
@@ -291,11 +292,13 @@ StandardError=journal
 [Install]
 WantedBy=multi-user.target
 EOF
+    sudo mv -f "$tempfile" "/lib/systemd/system/$1.service"
 }
 
 write_agent_config() {
     verbose "Writing agent configuration to $1"
-    run_or_sudo tee "$1" >/dev/null <<EOF
+    tempfile="$(mktemp -t "agent-config-XXXXXXXXXXXXXXXX")"
+    cat <<EOF > "$tempfile"
 {
   // Agent output configuration.
   "Output": {
@@ -347,6 +350,7 @@ write_agent_config() {
   }
 }
 EOF
+    run_or_sudo mv -f "$tempfile" "$1"
 }
 
 install_agent() {
@@ -409,10 +413,8 @@ install_agent() {
 
 write_database_config() {
     verbose "Writing database configuration to $1"
-    if [ -e "$1" ]; then
-        run_or_sudo rm -f "$1"
-    fi
-    run_or_sudo tee -a "$1" >/dev/null << EOF
+    tempfile="$(mktemp -t "database-XXXXXXXXXXXXXXXX")"
+    cat <<EOF > "$tempfile"
 {
   "DataRoot": "$opt_data_root",
   "ListenPort": "$opt_database_port",
@@ -555,6 +557,7 @@ write_database_config() {
   }
 }
 EOF
+    run_or_sudo mv -f "$tempfile" "$1"
 }
 
 install_database() {
@@ -631,10 +634,8 @@ install_database() {
 
 write_frontend_config() {
     verbose "Writing frontend configuration to $1"
-    if [ -e "$1" ]; then
-        run_or_sudo rm -f "$1"
-    fi
-    run_or_sudo tee -a "$1" >/dev/null << EOF
+    tempfile="$(mktemp -t "frontend-XXXXXXXXXXXXXXXX")"
+    cat <<EOF > "$tempfile"
 {
   "AllowedHosts": "*",
   "Kestrel": {
@@ -651,6 +652,7 @@ write_frontend_config() {
   }
 }
 EOF
+    run_or_sudo mv -f "$tempfile" "$1"
 }
 
 install_frontend() {
@@ -717,7 +719,8 @@ install_frontend() {
 
 write_uninstall() {
   verbose "Writing uninstall script to $opt_path/uninstall.sh"
-  run_or_sudo tee "$opt_path/uninstall.sh" >/dev/null <<EOF
+  tempfile="$(mktemp -t "uninstall-XXXXXXXXXXXXXXXX")"
+  cat <<EOF > "$tempfile"
 #!/bin/sh
 read -p "Uninstall logship? (y/n): This will delete everything under \"$opt_path\"." choice
 case "\$choice" in
@@ -742,6 +745,7 @@ case "\$choice" in
   ;;
 esac
 EOF
+  run_or_sudo mv -f "$tempfile" "$opt_path/uninstall.sh"
   run_or_sudo chmod +x "$opt_path/uninstall.sh"
 }
 
