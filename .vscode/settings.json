@@ -1,11 +1,19 @@
 {
+	"editor.formatOnSave": true,
     "files.associations": {
-        "appsettings.*.json": "jsonc"
+        "appsettings.*.json": "jsonc",
     },
     "json.schemas": [{
 		"fileMatch": ["appsettings.*.json"],
 		"schema": {
 			"allowTrailingCommas": true
 		}
-	}]
+	}],
+	"[json]": {
+		"editor.defaultFormatter": "esbenp.prettier-vscode",
+	},
+	"[shellscript]": {
+		"editor.defaultFormatter": "foxundermoon.shell-format",
+		"files.eol": "\n"
+	}
 }

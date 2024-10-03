@@ -1,26 +1,40 @@
 #!/bin/sh
+# Copyright logship LLC 2024
+# This script installs the logship agent, frontend, and database
 set -eu
 
-if test -t 1; then
-    ncolors=$(tput colors)
-    if test -n "$ncolors" && test "$ncolors" -ge 8; then
-        bold="$(tput bold)"
-        underline="$(tput smul)"
-        standout="$(tput smso)"
-        normal="$(tput sgr0)"
-        black="$(tput setaf 0)"
-        red="$(tput setaf 1)"
-        green="$(tput setaf 2)"
-        yellow="$(tput setaf 3)"
-        blue="$(tput setaf 4)"
-        magenta="$(tput setaf 5)"
-        cyan="$(tput setaf 6)"
-        white="$(tput setaf 7)"
-    fi
+bold=""
+underline=""
+standout=""
+normal=""
+black=""
+red=""
+green=""
+yellow=""
+blue=""
+magenta=""
+cyan=""
+white=""
+if test -t 1 && [ "${NO_COLOR:-}" != "1" ]; then
+  ncolors=$(tput colors)
+  if test -n "$ncolors" && test "$ncolors" -ge 8; then
+    bold="$(tput bold)"
+    underline="$(tput smul)"
+    standout="$(tput smso)"
+    normal="$(tput sgr0)"
+    black="$(tput setaf 0)"
+    red="$(tput setaf 1)"
+    green="$(tput setaf 2)"
+    yellow="$(tput setaf 3)"
+    blue="$(tput setaf 4)"
+    magenta="$(tput setaf 5)"
+    cyan="$(tput setaf 6)"
+    white="$(tput setaf 7)"
+  fi
 fi
 
 usage() {
-    cat <<EOF
+  cat <<EOF
 ${bold}Usage:${normal} ${blue}${CMD:=${0##*/}}${normal} ${cyan}[OPTIONS]${normal}
   e.g. ${CMD:=${0##*/}} -acdf ${green}# install all logship services & tools.${normal}
 
@@ -64,61 +78,64 @@ EOF
 }
 
 info() {
-    printf "${bold}${blue}%s:${normal} %s\n" "${CMD:=${0##*/}}" "$1"
+  printf "${bold}${blue}%s:${normal} %s\n" "${CMD:=${0##*/}}" "$1"
 }
 
 verbose() {
-    if [ "$opt_verbose" = 'true' ]; then
-        printf "${bold}${yellow}%s:${normal} %s\n" "${CMD:=${0##*/}}" "$1"
-    fi
+  if [ "$opt_verbose" = 'true' ]; then
+    printf "${bold}${yellow}%s:${normal} %s\n" "${CMD:=${0##*/}}" "$1"
+  fi
 }
 
 err() {
-    printf "${bold}${red}%s:${normal}${red} %s${normal}\n" "${CMD:=${0##*/}}" "$1" >&2
-    exit 1
+  printf "${bold}${red}%s:${normal}${red} %s${normal}\n" "${CMD:=${0##*/}}" "$1" >&2
+  exit 1
 }
 
 # Detect architecture
 if [ "$(uname -m)" = "x86_64" ]; then
-    architecture="x64"
+  architecture="x64"
 elif [ "$(uname -m)" = "aarch64" ]; then
-    architecture="arm64"
+  architecture="arm64"
 else
-    err "Unsupported architecture: $(uname -m)"
+  err "Unsupported architecture: $(uname -m)"
 fi
 
 # Detect operating system
 if [ "$(uname -s)" = "Darwin" ]; then
-    operating_system="osx"
+  operating_system="osx"
 elif [ "$(uname -s)" = "Linux" ]; then
-    operating_system="linux"
+  operating_system="linux"
 else
-    err "Unsupported operating system: $(uname -s)"
+  err "Unsupported operating system: $(uname -s)"
 fi
 
-
 verbose_ship() {
-    # Was this a waste of time? Maybe
-    if [ "$opt_verbose" = 'true' ]; then
-        printf "         %s*%s    _______                                                     \n" "$bold$white" "$normal" 
-        printf "           %s*%s  |   %s==%s|                                            %s_%s        \n" "$bold$white" "$normal" "$bold" "$normal" "$bold" "$normal"
-        printf "           ||_|     |%s[||]%s[||]%s[||]%s[||]%s[||]%s[||]%s[||]%s[||]%s[||]%s[||]%s[||]%s|%s        \n" "$blue" "$green" "$blue" "$red" "$white" "$green" "$white" "$red" "$white" "$blue" "$magenta" "$normal$bold" "$normal"
-        printf "          _||_|     |%s[||]%s[||]%s[||]%s[||]%s[||]%s[||]%s[||]%s[||]%s[||]%s[||]%s[||]%s|%s___     \n" "$red" "$white" "$blue" "$magenta" "$white" "$green" "$green" "$white" "$white" "$red" "$blue" "$normal$bold" "$normal"
-        printf "         |......................................................o.../     \n"
-        printf "         \........................................................./      \n"
-        printf "%s_,_,~_,~')_,~')_,~')_,~')_,~')_,~')_~')_,~')_~')_,~')_,~')_,~')_,~')_,~')%s\n\n" "$bold$blue" "$normal"
-    fi
+  # Was this a waste of time? Maybe
+  if [ "$opt_verbose" = 'true' ]; then
+    printf "         %s*%s    _______                                                     \n" "$bold$white" "$normal"
+    printf "           %s*%s  |   %s==%s|                                            %s_%s        \n" "$bold$white" "$normal" "$bold" "$normal" "$bold" "$normal"
+    printf "           ||_|     |%s[||]%s[||]%s[||]%s[||]%s[||]%s[||]%s[||]%s[||]%s[||]%s[||]%s[||]%s|%s        \n" "$blue" "$green" "$blue" "$red" "$white" "$green" "$white" "$red" "$white" "$blue" "$magenta" "$normal$bold" "$normal"
+    printf "          _||_|     |%s[||]%s[||]%s[||]%s[||]%s[||]%s[||]%s[||]%s[||]%s[||]%s[||]%s[||]%s|%s___     \n" "$red" "$white" "$blue" "$magenta" "$white" "$green" "$green" "$white" "$white" "$red" "$blue" "$normal$bold" "$normal"
+    printf "         |......................................................o.../     \n"
+    printf "         \........................................................./      \n"
+    printf "%s_,_,~_,~')_,~')_,~')_,~')_,~')_,~')_~')_,~')_~')_,~')_,~')_,~')_,~')_,~')%s\n\n" "$bold$blue" "$normal"
+  fi
 }
 
-invalid_arg () { printf >&2 "${bold}${red}%s:${normal}  %s: '${yellow}%s${normal}'\n" "${CMD:=${0##*/}}" "$1" "$2"; usage; exit 2; }
-check () { { [ "$1" != "$EOL" ] && [ "$1" != '--' ]; } || exit2 "missing argument" "$2"; }  # avoid infinite loop
+invalid_arg() {
+  printf >&2 "${bold}${red}%s:${normal}  %s: '${yellow}%s${normal}'\n" "${CMD:=${0##*/}}" "$1" "$2"
+  usage
+  exit 2
+}
+check() { { [ "$1" != "$EOL" ] && [ "$1" != '--' ]; } || exit2 "missing argument" "$2"; } # avoid infinite loop
 
 check_port() {
   # shellcheck disable=SC2046,SC2143
   if [ $(echo "$1" | grep -q "^[0-9]+$") ] && [ "$1" -ge 0 ] && [ "$1" -le 65535 ]; then
-      return 0
+    return 0
   else
-      err "Argument value \"$1\" is not a valid port."
+    err "Argument value \"$1\" is not a valid port."
   fi
 }
 
@@ -142,142 +159,160 @@ database_config_updated='false'
 database_password_updated='false'
 
 # parse command-line options
-set -- "$@" "${EOL:=$(printf '\1\3\3\7')}"  # end-of-list marker
+set -- "$@" "${EOL:=$(printf '\1\3\3\7')}" # end-of-list marker
 while [ "$1" != "$EOL" ]; do
-  opt="$1"; shift
+  opt="$1"
+  shift
   # shellcheck disable=SC2295,SC2034
   case "$opt" in
-    # Services
-    -a | --agent     ) opt_agent=true ;;
-    -c | --cli       ) opt_cli=true ;;
-    -d | --database  ) opt_database=true ;;
-    -f | --frontend  ) opt_frontend=true ;;
+  # Services
+  -a | --agent) opt_agent=true ;;
+  -c | --cli) opt_cli=true ;;
+  -d | --database) opt_database=true ;;
+  -f | --frontend) opt_frontend=true ;;
 
-    # Install options
-    -p | --path           ) check "$1" "$opt"; opt_path="${1%%/}"; shift ;;
-         --hostname           ) 
-            check "$1" "$opt";
-            opt_hostname="${1%%/}";
-            shift ;;
-         --overwrite      ) opt_overwrite=true ;;
-         --data-root      ) check "$1" "$opt"; opt_data_root="${1%%/}"; shift ;;
-         --database-port  ) 
-            check "$1" "$opt";
-            check_port "$1"
-            opt_database_port="$1";
-            shift ;;
-         --frontend-port  )
-            check "$1" "$opt";
-            check_port "$1"
-            opt_frontend_port="$1";
-            shift ;;
-         --preview        )
-            opt_tag='latest-pre'
-            ;;
-         --no-install) opt_noinstall=true ;;
+  # Install options
+  -p | --path)
+    check "$1" "$opt"
+    opt_path="${1%%/}"
+    shift
+    ;;
+  --hostname)
+    check "$1" "$opt"
+    opt_hostname="${1%%/}"
+    shift
+    ;;
+  --overwrite) opt_overwrite=true ;;
+  --data-root)
+    check "$1" "$opt"
+    opt_data_root="${1%%/}"
+    shift
+    ;;
+  --database-port)
+    check "$1" "$opt"
+    check_port "$1"
+    opt_database_port="$1"
+    shift
+    ;;
+  --frontend-port)
+    check "$1" "$opt"
+    check_port "$1"
+    opt_frontend_port="$1"
+    shift
+    ;;
+  --preview)
+    opt_tag='latest-pre'
+    ;;
+  --no-install) opt_noinstall=true ;;
 
     # Installer Script Options
-         --no-color  )
-            bold=""
-            underline=""
-            standout=""
-            normal=""
-            black=""
-            red=""
-            green=""
-            yellow=""
-            blue=""
-            magenta=""
-            cyan=""
-            white=""
-        ;;
-    -v | --verbose   ) opt_verbose=true ;;
-    -h | --help      ) opt_help=true ;;
+  --no-color)
+    bold=""
+    underline=""
+    standout=""
+    normal=""
+    black=""
+    red=""
+    green=""
+    yellow=""
+    blue=""
+    magenta=""
+    cyan=""
+    white=""
+    ;;
+  -v | --verbose) opt_verbose=true ;;
+  -h | --help) opt_help=true ;;
 
-
-    # process special cases
-    --) while [ "$1" != "$EOL" ]; do set -- "$@" "$1"; shift; done;;   # parse remaining as positional
-    --[!=]*=*) set -- "${opt%%=*}" "${opt#*=}" "$@";;                  # "--opt=arg"  ->  "--opt" "arg"
-    -[A-Za-z0-9] | -*[!A-Za-z0-9]*) invalid_arg "invalid option" "$opt";;    # anything invalid like '-*'
-    -?*) other="${opt#-?}"; set -- "${opt%$other}" "-${other}" "$@";;  # "-abc"  ->  "-a" "-bc"
-    *) set -- "$@" "$opt";;                                            # positional, rotate to the end
+  # process special cases
+  --) while [ "$1" != "$EOL" ]; do
+    set -- "$@" "$1"
+    shift
+  done ;;                                                                # parse remaining as positional
+  --[!=]*=*) set -- "${opt%%=*}" "${opt#*=}" "$@" ;;                     # "--opt=arg"  ->  "--opt" "arg"
+  -[A-Za-z0-9] | -*[!A-Za-z0-9]*) invalid_arg "invalid option" "$opt" ;; # anything invalid like '-*'
+  -?*)
+    other="${opt#-?}"
+    set -- "${opt%$other}" "-${other}" "$@"
+    ;;                     # "-abc"  ->  "-a" "-bc"
+  *) set -- "$@" "$opt" ;; # positional, rotate to the end
   esac
-done; shift
+done
+shift
 
 if [ "$opt_help" = "true" ]; then
-    printf "%slogship installer%s\n\n" "$bold" "$normal"
-    verbose_ship
-    usage
-    exit 0
+  printf "%slogship installer%s\n\n" "$bold" "$normal"
+  verbose_ship
+  usage
+  exit 0
 fi
 
 # Default install to true if none are specified.
 if [ -z "$opt_agent" ] && [ -z "$opt_database" ] && [ -z "$opt_frontend" ] && [ -z "$opt_cli" ]; then
-    opt_agent=true
-    opt_database=true
-    opt_frontend=true
-    opt_cli=true
+  opt_agent=true
+  opt_database=true
+  opt_frontend=true
+  opt_cli=true
 fi
 
-service_exists () {
-    # shellcheck disable=SC2046,SC2143
-    if [ $(systemctl status "$1" 2> /dev/null | grep -Fq "Active:") ]; then
-        return 1
-    else
-        return 0
-    fi
+service_exists() {
+  # shellcheck disable=SC2046,SC2143
+  if [ $(systemctl status "$1" 2>/dev/null | grep -Fq "Active:") ]; then
+    return 1
+  else
+    return 0
+  fi
 }
 
 ensure() {
-    if ! "$@"; then err "command failed: $*"; fi
+  if ! "$@"; then err "command failed: $*"; fi
 }
 
 need_cmd() {
-    if ! check_cmd "$1"; then
-        err "need '$1' (command not found)"
-    fi
+  if ! check_cmd "$1"; then
+    err "need '$1' (command not found)"
+  fi
 }
 
 need_cmds() {
-    missing_cmds=""
-    for cmd in "$@"; do
-        if ! check_cmd "$cmd"; then
-            if [ -z "$missing_cmds" ]; then
-                missing_cmds="$cmd"
-            else
-                missing_cmds="$missing_cmds $cmd"
-            fi
-        fi
-    done
-
-    if [ -n "$missing_cmds" ]; then
-        err "Install required command(s) to continue. Missing = $missing_cmds"
+  missing_cmds=""
+  for cmd in "$@"; do
+    if ! check_cmd "$cmd"; then
+      if [ -z "$missing_cmds" ]; then
+        missing_cmds="$cmd"
+      else
+        missing_cmds="$missing_cmds $cmd"
+      fi
     fi
+  done
+
+  if [ -n "$missing_cmds" ]; then
+    err "Install required command(s) to continue. $bold$missing_cmds$normal"
+  fi
 }
 
 check_cmd() {
-    command -v "$1" > /dev/null 2>&1
+  command -v "$1" >/dev/null 2>&1
 }
 
 run_or_sudo() {
-    if "$@" 2>/dev/null; then
-        verbose "Executed \"$*\"."
-        return 0
+  if "$@" 2>/dev/null; then
+    verbose "Executed \"$*\"."
+    return 0
+  else
+    if [ "$(sudo -n true 2>/dev/null)" = "0" ]; then
+      err "Command failed: $*"
     else
-        if [ "$(sudo -n true 2>/dev/null)" = "0" ]; then
-            err "Command failed: $*"
-        else
-            info "Elevated permission required to execute \"$*\"."
-            ensure sudo "$@"
-            verbose "${cyan}[sudo]${normal} Executed \"$*\"."
-        fi
+      info "Elevated permission required to execute \"$*\"."
+      ensure sudo "$@"
+      info "${cyan}[sudo]${normal} Executed \"$*\"."
     fi
+  fi
 }
 
 systemd_install() {
-    verbose "Creating unit file for $1"
-    tempfile="$(mktemp -t "$1-XXXXXXXXXXXXXXXX")"
-    cat <<EOF > "$tempfile"
+  verbose "Creating unit file for $1"
+  tempfile="$(mktemp -t "$1-XXXXXXXXXXXXXXXX")"
+  cat <<EOF >"$tempfile"
 [Unit]
 Description=$1
 Documentation=https://logship.io/
@@ -292,13 +327,13 @@ StandardError=journal
 [Install]
 WantedBy=multi-user.target
 EOF
-    sudo mv -f "$tempfile" "/lib/systemd/system/$1.service"
+  sudo mv -f "$tempfile" "/lib/systemd/system/$1.service"
 }
 
 write_agent_config() {
-    verbose "Writing agent configuration to $1"
-    tempfile="$(mktemp -t "agent-config-XXXXXXXXXXXXXXXX")"
-    cat <<EOF > "$tempfile"
+  verbose "Writing agent configuration to $1"
+  tempfile="$(mktemp -t "agent-config-XXXXXXXXXXXXXXXX")"
+  cat <<EOF >"$tempfile"
 {
   // Agent output configuration.
   "Output": {
@@ -306,8 +341,8 @@ write_agent_config() {
     // This should match the host/port of your logship database.
     "endpoint": "http://$opt_hostname:$opt_database_port",
 
-    // The subscription to upload to
-    "subscription": "00000000-0000-0000-0000-000000000000",
+    // The account to upload to
+    "account": "00000000-0000-0000-0000-000000000000",
 
     // Upload interval
     "interval": "00:00:02",
@@ -350,71 +385,71 @@ write_agent_config() {
   }
 }
 EOF
-    run_or_sudo mv -f "$tempfile" "$1"
+  run_or_sudo mv -f "$tempfile" "$1"
 }
 
 install_agent() {
-    agent_path="$opt_path/agent"
-    service_name="logship-agent"
-    config="appsettings.json"
-    exe="Logship.Agent.ConsoleHost"
-    file="LogshipAgent-$operating_system-$architecture.zip"
-    tempdir="$(mktemp -d -t "installer-$service_name-XXXXXXXXXXXXXXXX")"
+  agent_path="$opt_path/agent"
+  service_name="logship-agent"
+  config="appsettings.json"
+  exe="Logship.Agent.ConsoleHost"
+  file="LogshipAgent-$operating_system-$architecture.zip"
+  tempdir="$(mktemp -d -t "installer-$service_name-XXXXXXXXXXXXXXXX")"
 
-    verbose "Using temporary directory $tempdir"
-    info "Downloading $service_name..."
-    ensure wget "https://github.com/logship-io/logship-agent/releases/latest/download/$file" -P "$tempdir" -q --show-progress
-    verbose "Downloaded $service_name."
-    run_or_sudo mkdir -p "$agent_path"
+  verbose "Using temporary directory $tempdir"
+  info "Downloading $service_name..."
+  ensure wget "https://github.com/logship-io/logship-agent/releases/latest/download/$file" -P "$tempdir" -q --show-progress
+  verbose "Downloaded $service_name."
+  run_or_sudo mkdir -p "$agent_path"
 
-    verbose "Extracting files..."
-    ensure unzip -qq "$tempdir/$file" -d "$tempdir/extract"
-    run_or_sudo cp -f "$tempdir/extract/$exe" "$agent_path/$exe"
-    run_or_sudo chmod +x "$agent_path/$exe"
+  verbose "Extracting files..."
+  ensure unzip -qq "$tempdir/$file" -d "$tempdir/extract"
+  run_or_sudo cp -f "$tempdir/extract/$exe" "$agent_path/$exe"
+  run_or_sudo chmod +x "$agent_path/$exe"
 
-    verbose "Cleaning up $tempdir"
-    rm -rf "$tempdir"
+  verbose "Cleaning up $tempdir"
+  rm -rf "$tempdir"
 
-    if [ ! -e "$agent_path/$config" ] && [ -z "$opt_overwrite" ]; then
-        write_agent_config "$agent_path/$config"
+  if [ ! -e "$agent_path/$config" ] && [ -z "$opt_overwrite" ]; then
+    write_agent_config "$agent_path/$config"
+  else
+    if [ "$opt_overwrite" = 'true' ]; then
+      info "--overwrite: Overwriting existing agent configuration."
+      write_agent_config "$agent_path/$config"
     else
-        if [ "$opt_overwrite" = 'true' ]; then
-            info "--overwrite: Overwriting existing agent configuration."
-            write_agent_config "$agent_path/$config"
-        else
-            verbose "Agent configuration \"$agent_path/$config\" already exists. Use --overwrite to overwrite existing configuration."
-        fi
+      verbose "Agent configuration \"$agent_path/$config\" already exists. Use --overwrite to overwrite existing configuration."
+    fi
+  fi
+
+  if [ -z "$opt_noinstall" ]; then
+    if systemctl list-unit-files | grep -q "^$service_name.service"; then
+      verbose "The $service_name service already exists"
+      # Check if the service is running
+      if systemctl is-active --quiet "$service_name"; then
+        # Stop the service
+        sudo systemctl stop "$service_name"
+        verbose "Stopped the $service_name service."
+      else
+        verbose "The $service_name service is not running."
+      fi
+    else
+      verbose "The $service_name service does not exist."
+      systemd_install "$service_name" "$opt_path/agent" "$exe"
     fi
 
-    if [ -z "$opt_noinstall" ]; then
-        if systemctl list-unit-files | grep -q "^$service_name.service"; then
-            verbose "The $service_name service already exists"
-            # Check if the service is running
-            if systemctl is-active --quiet "$service_name"; then
-                # Stop the service
-                sudo systemctl stop "$service_name"
-                verbose "Stopped the $service_name service."
-            else
-                verbose "The $service_name service is not running."
-            fi
-        else
-            verbose "The $service_name service does not exist."
-            systemd_install "$service_name" "$opt_path/agent" "$exe"
-        fi
+    run_or_sudo systemctl enable "$service_name.service"
+    run_or_sudo systemctl start "$service_name.service"
+  else
+    verbose "Skipping installation of $service_name"
+  fi
 
-        run_or_sudo systemctl enable "$service_name.service"
-        run_or_sudo systemctl start "$service_name.service"
-    else
-        verbose "Skipping installation of $service_name"
-    fi
-
-    info "Configuration of $service_name complete."
+  info "Configuration of $service_name complete."
 }
 
 write_database_config() {
-    verbose "Writing database configuration to $1"
-    tempfile="$(mktemp -t "database-XXXXXXXXXXXXXXXX")"
-    cat <<EOF > "$tempfile"
+  verbose "Writing database configuration to $1"
+  tempfile="$(mktemp -t "database-XXXXXXXXXXXXXXXX")"
+  cat <<EOF >"$tempfile"
 {
   "DataRoot": "$opt_data_root",
   "ListenPort": "$opt_database_port",
@@ -522,10 +557,10 @@ write_database_config() {
       "setupService": {
         "enable": true,
         "provision": true,
-        "subscriptions": [
+        "accounts": [
           {
-            "subscriptionId": "00000000-0000-0000-0000-000000000000",
-            "subscriptionName": "Default Subscription"
+            "accountId": "00000000-0000-0000-0000-000000000000",
+            "accountName": "Default Account"
           },
         ],
         "users": [
@@ -539,9 +574,9 @@ write_database_config() {
             "defaultGlobalPermissions": [
               "Logship.Global.Admin"
             ],
-            "defaultSubscriptions": [
+            "defaultAccounts": [
               {
-                "subscriptionName": "Default Subscription",
+                "accountName": "Default Account",
                 "userPermissions": [
                   "Logship.Account.Admin"
                 ]
@@ -557,85 +592,85 @@ write_database_config() {
   }
 }
 EOF
-    run_or_sudo mv -f "$tempfile" "$1"
+  run_or_sudo mv -f "$tempfile" "$1"
 }
 
 install_database() {
-    database_path="$opt_path/database"
-    service_name="logship-database"
-    config="appsettings.json"
-    exe="Logship.Host.ConsoleHost"
-    file="${service_name}_${operating_system}-${architecture}.zip"
-    tempdir="$(mktemp -d -t "installer-$service_name-XXXXXXXXXXXXXXXX")"
+  database_path="$opt_path/database"
+  service_name="logship-database"
+  config="appsettings.json"
+  exe="Logship.Host.ConsoleHost"
+  file="${service_name}_${operating_system}-${architecture}.zip"
+  tempdir="$(mktemp -d -t "installer-$service_name-XXXXXXXXXXXXXXXX")"
 
-    verbose "Using temporary directory $tempdir"
-    info "Downloading $service_name..."
-    verbose "Download URL: https://ar.logship.io/release/${service_name}/${operating_system}-${architecture}/${opt_tag}"
-    ensure wget "https://ar.logship.io/release/${service_name}/${operating_system}-${architecture}/${opt_tag}" -P "$tempdir" -q --show-progress
-    verbose "Downloaded $service_name."
-    run_or_sudo mkdir -p "$opt_data_root"
-    run_or_sudo mkdir -p "$database_path"
+  verbose "Using temporary directory $tempdir"
+  info "Downloading $service_name..."
+  verbose "Download URL: https://ar.logship.io/release/${service_name}/${operating_system}-${architecture}/${opt_tag}"
+  ensure wget "https://ar.logship.io/release/${service_name}/${operating_system}-${architecture}/${opt_tag}" -P "$tempdir" -q --show-progress
+  verbose "Downloaded $service_name."
+  run_or_sudo mkdir -p "$opt_data_root"
+  run_or_sudo mkdir -p "$database_path"
 
-    verbose "Extracting files..."
-    ensure unzip -qq "$tempdir/$opt_tag" -d "$tempdir/extract"
-    rm "$tempdir/extract/appsettings.json" 2>/dev/null
-    rm "$tempdir/extract/appsettings.Development.json" 2>/dev/null
+  verbose "Extracting files..."
+  ensure unzip -qq "$tempdir/$opt_tag" -d "$tempdir/extract"
+  rm "$tempdir/extract/appsettings.json" 2>/dev/null
+  rm "$tempdir/extract/appsettings.Development.json" 2>/dev/null
 
-    run_or_sudo cp -rf "$tempdir/extract/." "$database_path"
-    run_or_sudo chmod +x "$database_path/$exe"
+  run_or_sudo cp -rf "$tempdir/extract/." "$database_path"
+  run_or_sudo chmod +x "$database_path/$exe"
 
-    verbose "Cleaning up $tempdir"
-    rm -rf "$tempdir"
+  verbose "Cleaning up $tempdir"
+  rm -rf "$tempdir"
 
-    if [ ! -e "$database_path/$config" ] && [ -z "$opt_overwrite" ]; then
-        write_database_config "$database_path/$config"
-        database_config_updated='true'
+  if [ ! -e "$database_path/$config" ] && [ -z "$opt_overwrite" ]; then
+    write_database_config "$database_path/$config"
+    database_config_updated='true'
+    database_password_updated='true'
+  else
+    if [ "$opt_overwrite" = 'true' ]; then
+      if [ -z "$(find "$opt_data_root" -mindepth 1 -maxdepth 1 -type f -o -type d)" ]; then
         database_password_updated='true'
-    else
-        if [ "$opt_overwrite" = 'true' ]; then
-            if [ -z "$(find "$opt_data_root" -mindepth 1 -maxdepth 1 -type f -o -type d)" ]; then
-                database_password_updated='true'
-            else
-                info "The data directory is not empty. Admin password won't be updated. Delete datafiles files in \"$opt_data_root\" to reset to the password in configuration."
-            fi
+      else
+        info "The data directory is not empty. Admin password won't be updated. Delete datafiles files in \"$opt_data_root\" to reset to the password in configuration."
+      fi
 
-            info "--overwrite: Overwriting existing database configuration."
-            write_database_config "$database_path/$config"
-            database_config_updated='true'
-        else
-            verbose "Database configuration \"$database_path/$config\" already exists. Use --overwrite to overwrite existing configuration."
-        fi
+      info "--overwrite: Overwriting existing database configuration."
+      write_database_config "$database_path/$config"
+      database_config_updated='true'
+    else
+      verbose "Database configuration \"$database_path/$config\" already exists. Use --overwrite to overwrite existing configuration."
+    fi
+  fi
+
+  if [ -z "$opt_noinstall" ]; then
+    if systemctl list-unit-files | grep -q "^$service_name.service"; then
+      verbose "The $service_name service already exists"
+      # Check if the service is running
+      if systemctl is-active --quiet "$service_name"; then
+        # Stop the service
+        sudo systemctl stop "$service_name"
+        verbose "Stopped the $service_name service."
+      else
+        verbose "The $service_name service is not running."
+      fi
+    else
+      verbose "The $service_name service does not exist."
+      systemd_install "$service_name" "$opt_path/database" "$exe"
     fi
 
-    if [ -z "$opt_noinstall" ]; then
-        if systemctl list-unit-files | grep -q "^$service_name.service"; then
-            verbose "The $service_name service already exists"
-            # Check if the service is running
-            if systemctl is-active --quiet "$service_name"; then
-                # Stop the service
-                sudo systemctl stop "$service_name"
-                verbose "Stopped the $service_name service."
-            else
-                verbose "The $service_name service is not running."
-            fi
-        else
-            verbose "The $service_name service does not exist."
-            systemd_install "$service_name" "$opt_path/database" "$exe"
-        fi
-        
-        run_or_sudo systemctl enable "$service_name.service"
-        run_or_sudo systemctl restart "$service_name.service"
-    else
-        verbose "Skipping installation of $service_name"
-    fi
+    run_or_sudo systemctl enable "$service_name.service"
+    run_or_sudo systemctl restart "$service_name.service"
+  else
+    verbose "Skipping installation of $service_name"
+  fi
 
-    info "Configuration of $service_name complete."
+  info "Configuration of $service_name complete."
 }
 
 write_frontend_config() {
-    verbose "Writing frontend configuration to $1"
-    tempfile="$(mktemp -t "frontend-XXXXXXXXXXXXXXXX")"
-    cat <<EOF > "$tempfile"
+  verbose "Writing frontend configuration to $1"
+  tempfile="$(mktemp -t "frontend-XXXXXXXXXXXXXXXX")"
+  cat <<EOF >"$tempfile"
 {
   "AllowedHosts": "*",
   "Kestrel": {
@@ -652,7 +687,7 @@ write_frontend_config() {
   }
 }
 EOF
-    run_or_sudo mv -f "$tempfile" "$1"
+  run_or_sudo mv -f "$tempfile" "$1"
 }
 
 install_frontend() {
@@ -682,36 +717,36 @@ install_frontend() {
   rm -rf "$tempdir"
 
   if [ ! -e "$frontend_path/$config" ] && [ -z "$opt_overwrite" ]; then
-      write_frontend_config "$frontend_path/$config"
+    write_frontend_config "$frontend_path/$config"
   else
-      if [ "$opt_overwrite" = 'true' ]; then
-          info "--overwrite: Overwriting existing frontend configuration."
-          write_frontend_config "$frontend_path/$config"
-      else
-          verbose "Frontend configuration \"$frontend_path/$config\" already exists. Use --overwrite to overwrite existing configuration."
-      fi
+    if [ "$opt_overwrite" = 'true' ]; then
+      info "--overwrite: Overwriting existing frontend configuration."
+      write_frontend_config "$frontend_path/$config"
+    else
+      verbose "Frontend configuration \"$frontend_path/$config\" already exists. Use --overwrite to overwrite existing configuration."
+    fi
   fi
 
   if [ -z "$opt_noinstall" ]; then
-      if systemctl list-unit-files | grep -q "^$service_name.service"; then
-          verbose "The $service_name service already exists"
-          # Check if the service is running
-          if systemctl is-active --quiet "$service_name"; then
-              # Stop the service
-              sudo systemctl stop "$service_name"
-              verbose "Stopped the $service_name service."
-          else
-              verbose "The $service_name service is not running."
-          fi
+    if systemctl list-unit-files | grep -q "^$service_name.service"; then
+      verbose "The $service_name service already exists"
+      # Check if the service is running
+      if systemctl is-active --quiet "$service_name"; then
+        # Stop the service
+        sudo systemctl stop "$service_name"
+        verbose "Stopped the $service_name service."
       else
-          verbose "The $service_name service does not exist."
-          systemd_install "$service_name" "$opt_path/frontend" "$exe"
+        verbose "The $service_name service is not running."
       fi
-      
-      run_or_sudo systemctl enable "$service_name.service"
-      run_or_sudo systemctl restart "$service_name.service"
+    else
+      verbose "The $service_name service does not exist."
+      systemd_install "$service_name" "$opt_path/frontend" "$exe"
+    fi
+
+    run_or_sudo systemctl enable "$service_name.service"
+    run_or_sudo systemctl restart "$service_name.service"
   else
-      verbose "Skipping installation of $service_name"
+    verbose "Skipping installation of $service_name"
   fi
 
   info "Configuration of $service_name complete."
@@ -720,7 +755,7 @@ install_frontend() {
 write_uninstall() {
   verbose "Writing uninstall script to $opt_path/uninstall.sh"
   tempfile="$(mktemp -t "uninstall-XXXXXXXXXXXXXXXX")"
-  cat <<EOF > "$tempfile"
+  cat <<EOF >"$tempfile"
 #!/bin/sh
 read -p "Uninstall logship? (y/n): This will delete everything under \"$opt_path\"." choice
 case "\$choice" in
@@ -755,15 +790,15 @@ main() {
   verbose "Root installation path: $opt_path"
 
   if [ "$opt_agent" = 'true' ]; then
-      install_agent
+    install_agent
   fi
 
   if [ "$opt_database" = 'true' ]; then
-      install_database
+    install_database
   fi
 
   if [ "$opt_frontend" = 'true' ]; then
-      install_frontend
+    install_frontend
   fi
 
   # if [ "$opt_cli" = 'true' ]; then
@@ -775,20 +810,20 @@ main() {
   info "Installation complete."
   info "Uninstall with \"${cyan}sudo $opt_path/uninstall.sh${normal}\"."
   if [ "$opt_database" = 'true' ] && [ "$database_config_updated" = 'true' ]; then
-      info "Your database is accessible at http://$opt_hostname:$opt_database_port."
-      if [ "$database_password_updated" = 'true' ]; then
-          info "    Username: admin"
-          info "    Password: $opt_database_password"
-          info "You should probably change this password. You can also find it in \"$opt_path/database/appsettings.json\"."
-      fi
+    info "Your database is accessible at http://$opt_hostname:$opt_database_port."
+    if [ "$database_password_updated" = 'true' ]; then
+      info "    Username: admin"
+      info "    Password: $opt_database_password"
+      info "You should probably change this password. You can also find it in \"$opt_path/database/appsettings.json\"."
+    fi
   fi
   if [ "$opt_frontend" = 'true' ]; then
-      if systemctl is-active --quiet "logship-frontend"; then
-          info "Your frontend is accessible at http://$opt_hostname:$opt_frontend_port"
-      fi
+    if systemctl is-active --quiet "logship-frontend"; then
+      info "Your frontend is accessible at http://$opt_hostname:$opt_frontend_port"
+    fi
   fi
   if [ "$opt_hostname" != 'localhost' ]; then
-      info "If you'd like to make your instance externally accessible, don't forget to update firewall rules!"
+    info "If you'd like to make your instance externally accessible, don't forget to update firewall rules!"
   fi
 }
 
