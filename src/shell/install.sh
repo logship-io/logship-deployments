@@ -36,22 +36,26 @@ fi
 usage() {
   cat <<EOF
 ${bold}Usage:${normal} ${blue}${CMD:=${0##*/}}${normal} ${cyan}[OPTIONS]${normal}
-  e.g. ${CMD:=${0##*/}} -acdf ${green}# install all logship services & tools.${normal}
+  e.g. ${CMD:=${0##*/}} -adf ${green}# logship installer${normal}
 
-  Providing no download/install arguments will install all available services & tools.
+  Providing no download/install arguments will install the database, frontend, and agent.
+  Run in a terminal to configure interactively, or pass ${cyan}-y${normal} (with options) for an unattended install.
 
 ${bold}Options:${normal}
   ${cyan}-a${normal}, ${cyan}--agent${normal}
           Download and configure the logship agent
-  ${cyan}-c${normal}, ${cyan}--cli${normal}
-          Download and configure the logship CLI (logsh)
   ${cyan}-d${normal}, ${cyan}--database${normal}
           Download and configure the logship database
   ${cyan}-f${normal}, ${cyan}--frontend${normal}
           Download and configure the logship frontend
 
       ${cyan}--hostname${normal}
-          [default: localhost] Set the hostname
+          [default: localhost] Set the backend hostname. Accepts a full URL;
+          an ${cyan}https://${normal} host is used as-is (TLS on 443).
+      ${cyan}--account${normal}
+          [default: 00000000-0000-0000-0000-000000000000] Account GUID the agent ships to
+      ${cyan}--registration-token${normal}
+          Agent registration token used to authenticate to the backend
       ${cyan}--database-port${normal}
           [default: 5000] Set the database's listen port
       ${cyan}--frontend-port${normal}
@@ -69,6 +73,8 @@ ${bold}Options:${normal}
 
       ${cyan}--no-color${normal}
           Disable colorful output
+  ${cyan}-y${normal}, ${cyan}--yes${normal}, ${cyan}--non-interactive${normal}
+          Skip interactive prompts and install unattended
   ${cyan}-v${normal}, ${cyan}--verbose${normal}
           Enable verbose output
   ${cyan}-h${normal}, ${cyan}--help${normal}
@@ -130,33 +136,172 @@ invalid_arg() {
 }
 check() { { [ "$1" != "$EOL" ] && [ "$1" != '--' ]; } || exit2 "missing argument" "$2"; } # avoid infinite loop
 
+is_valid_port() {
+  printf '%s' "$1" | grep -Eq '^[0-9]+$' && [ "$1" -ge 0 ] && [ "$1" -le 65535 ]
+}
+
 check_port() {
-  # shellcheck disable=SC2046,SC2143
-  if [ $(echo "$1" | grep -q "^[0-9]+$") ] && [ "$1" -ge 0 ] && [ "$1" -le 65535 ]; then
-    return 0
+  is_valid_port "$1" || err "Argument value \"$1\" is not a valid port."
+}
+
+# Interactive prompts read from /dev/tty so they work under "curl ... | sh",
+# where stdin is the script itself rather than the terminal.
+is_interactive() {
+  [ "$opt_yes" != 'true' ] && [ -t 1 ] && [ -r /dev/tty ]
+}
+
+ask() {
+  # ask "prompt" "default" -> echoes the answer.
+  # Pre-fills the default as editable text where the shell supports it (bash),
+  # otherwise shows it as a [hint]. Empty input always falls back to the default.
+  if [ -n "${BASH_VERSION:-}" ]; then
+    printf "${bold}${blue}%s${normal}: " "$1" >/dev/tty
+    # shellcheck disable=SC3045 # read -e/-i is guarded behind the bash check above
+    read -r -e -i "$2" _answer </dev/tty
   else
-    err "Argument value \"$1\" is not a valid port."
+    printf "${bold}${blue}%s${normal} [${cyan}%s${normal}]: " "$1" "$2" >/dev/tty
+    read -r _answer </dev/tty
   fi
+  [ -z "$_answer" ] && _answer="$2"
+  printf '%s' "$_answer"
+}
+
+ask_yn() {
+  # ask_yn "prompt" "Y|N" -> returns 0 for yes, 1 for no
+  case "$2" in [Yy]*) _hint='Y/n' ;; *) _hint='y/N' ;; esac
+  printf "${bold}${blue}%s${normal} [${cyan}%s${normal}]: " "$1" "$_hint" >/dev/tty
+  read -r _answer </dev/tty
+  [ -z "$_answer" ] && _answer="$2"
+  case "$_answer" in [Yy]*) return 0 ;; *) return 1 ;; esac
+}
+
+ask_secret() {
+  # ask_secret "prompt" "default" -> reads a secret without echoing it.
+  # The default is never displayed (it may be sensitive); empty input keeps it.
+  printf "${bold}${blue}%s${normal}: " "$1" >/dev/tty
+  # Turn off terminal echo around the read so the value never renders.
+  _stty_saved=$(stty -g </dev/tty 2>/dev/null) || _stty_saved=''
+  [ -n "$_stty_saved" ] && stty -echo </dev/tty 2>/dev/null
+  read -r _answer </dev/tty
+  [ -n "$_stty_saved" ] && stty "$_stty_saved" </dev/tty 2>/dev/null
+  printf '\n' >/dev/tty # echo was off, so emit the newline the user's Enter didn't
+  [ -z "$_answer" ] && _answer="$2"
+  printf '%s' "$_answer"
+}
+
+was_set() {
+  # was_set <option-name> -> true if that option was passed on the command line.
+  case " $explicit_opts " in
+  *" $1 "*) return 0 ;;
+  *) return 1 ;;
+  esac
+}
+
+ask_port() {
+  # ask_port "prompt" "default" -> echoes a valid port, re-prompting on error
+  while true; do
+    _port="$(ask "$1" "$2")"
+    if is_valid_port "$_port"; then
+      printf '%s' "$_port"
+      return 0
+    fi
+    printf "${bold}${red}Invalid port: '%s'. Enter a number between 0 and 65535.${normal}\n" "$_port" >/dev/tty
+  done
+}
+
+clean_hostname() {
+  # Strip a URL scheme and any /path, leaving a bare host for display messages.
+  # e.g. "https://backend.logship.io/foo" -> "backend.logship.io"
+  _host="${1#http://}"
+  _host="${_host#https://}"
+  _host="${_host%%/*}"
+  printf '%s' "$_host"
+}
+
+backend_url() {
+  # backend_url "hostname" "port" -> full URL the agent/frontend use to reach
+  # the backend. Honors an http(s):// scheme in the hostname: an https host
+  # (or one with an explicit :port) is used as-is; a bare/http host gets the
+  # configured port appended. So "https://backend.logship.io" stays TLS on 443,
+  # while "localhost" becomes "http://localhost:$port".
+  _scheme='http'
+  _h="$1"
+  case "$_h" in
+  https://*) _scheme='https' && _h="${_h#https://}" ;;
+  http://*) _h="${_h#http://}" ;;
+  esac
+  _h="${_h%%/*}" # strip any path
+  case "$_h" in
+  *:*) printf '%s://%s' "$_scheme" "$_h" ;;            # host already has :port
+  *) if [ "$_scheme" = 'https' ]; then
+    printf 'https://%s' "$_h"                          # https: assume 443
+  else
+    printf 'http://%s:%s' "$_h" "$2"                   # http/bare: append port
+  fi ;;
+  esac
+}
+
+is_valid_guid() {
+  printf '%s' "$1" | grep -Eq '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'
+}
+
+check_guid() {
+  is_valid_guid "$1" || err "Argument value \"$1\" is not a valid account GUID (expected 8-4-4-4-12 hex)."
+}
+
+ask_guid() {
+  # ask_guid "prompt" "default" -> echoes a valid GUID, re-prompting on error
+  while true; do
+    _guid="$(ask "$1" "$2")"
+    if is_valid_guid "$_guid"; then
+      printf '%s' "$_guid"
+      return 0
+    fi
+    printf "${bold}${red}Invalid GUID: '%s'. Expected 8-4-4-4-12 hex.${normal}\n" "$_guid" >/dev/tty
+  done
+}
+
+check_backend_reachable() {
+  # Warn (never fail) if this host can't reach the backend base URL "$1". The
+  # agent posts to "$1/agents/<account>/collector-client/refresh"; a scheme/port
+  # mismatch surfaces here instead of as a silent 100s timeout once it starts.
+  # wget exit 8 = the server answered with an HTTP error, which still proves reach.
+  verbose "Checking backend connectivity to $1..."
+  _rc=0
+  wget -q --spider -T 10 -t 1 "$1" 2>/dev/null || _rc=$?
+  if [ "$_rc" -eq 0 ] || [ "$_rc" -eq 8 ]; then
+    verbose "Backend $1 is reachable."
+    return 0
+  fi
+  info "${bold}${yellow}Warning:${normal} could not reach the backend at $1 (wget exit $_rc)."
+  info "Verify the scheme/port and any firewall between here and the backend."
+  info "The agent will keep retrying, but can't register or ship data until this connects."
 }
 
 opt_hostname='localhost'
+opt_account='00000000-0000-0000-0000-000000000000'
+opt_registration_token=''
 opt_data_root='/logship'
 opt_path='/opt/logship'
 opt_database_port='5000'
 opt_database_password="$(head /dev/urandom | tr -dc 'a-zA-Z0-9' | head -c 10)"
 opt_frontend_port='8000'
-opt_tag="latest-pre"
+opt_tag="latest"
 opt_agent=''
-opt_cli=''
 opt_database=''
 opt_frontend=''
 opt_noinstall=''
 opt_verbose=''
 opt_help=''
 opt_overwrite=''
+opt_yes=''
 
 database_config_updated='false'
 database_password_updated='false'
+
+# Track which options were passed explicitly so interactive mode doesn't re-prompt
+# for them (and never echoes an arg'd secret). Space-delimited option names.
+explicit_opts=''
 
 # parse command-line options
 set -- "$@" "${EOL:=$(printf '\1\3\3\7')}" # end-of-list marker
@@ -167,41 +312,59 @@ while [ "$1" != "$EOL" ]; do
   case "$opt" in
   # Services
   -a | --agent) opt_agent=true ;;
-  -c | --cli) opt_cli=true ;;
   -d | --database) opt_database=true ;;
   -f | --frontend) opt_frontend=true ;;
+  -c | --cli) err "CLI installation is not supported by this installer. Install logsh separately." ;;
 
   # Install options
   -p | --path)
     check "$1" "$opt"
     opt_path="${1%%/}"
+    explicit_opts="$explicit_opts path"
     shift
     ;;
   --hostname)
     check "$1" "$opt"
     opt_hostname="${1%%/}"
+    explicit_opts="$explicit_opts hostname"
+    shift
+    ;;
+  --account)
+    check "$1" "$opt"
+    check_guid "$1"
+    opt_account="$1"
+    explicit_opts="$explicit_opts account"
+    shift
+    ;;
+  --registration-token)
+    check "$1" "$opt"
+    opt_registration_token="$1"
+    explicit_opts="$explicit_opts registration-token"
     shift
     ;;
   --overwrite) opt_overwrite=true ;;
   --data-root)
     check "$1" "$opt"
     opt_data_root="${1%%/}"
+    explicit_opts="$explicit_opts data-root"
     shift
     ;;
   --database-port)
     check "$1" "$opt"
     check_port "$1"
     opt_database_port="$1"
+    explicit_opts="$explicit_opts database-port"
     shift
     ;;
   --frontend-port)
     check "$1" "$opt"
     check_port "$1"
     opt_frontend_port="$1"
+    explicit_opts="$explicit_opts frontend-port"
     shift
     ;;
   --preview)
-    opt_tag='latest-pre'
+    opt_tag='latest'
     ;;
   --no-install) opt_noinstall=true ;;
 
@@ -220,6 +383,7 @@ while [ "$1" != "$EOL" ]; do
     cyan=""
     white=""
     ;;
+  -y | --yes | --non-interactive) opt_yes=true ;;
   -v | --verbose) opt_verbose=true ;;
   -h | --help) opt_help=true ;;
 
@@ -246,22 +410,75 @@ if [ "$opt_help" = "true" ]; then
   exit 0
 fi
 
-# Default install to true if none are specified.
-if [ -z "$opt_agent" ] && [ -z "$opt_database" ] && [ -z "$opt_frontend" ] && [ -z "$opt_cli" ]; then
+# Remember whether the user explicitly picked components before we prompt/default.
+components_explicit=false
+if [ -n "$opt_agent" ] || [ -n "$opt_database" ] || [ -n "$opt_frontend" ]; then
+  components_explicit=true
+fi
+
+interactive_config() {
+  info "Interactive setup. Press enter to accept each [default]. Re-run with ${cyan}-y${normal} for an unattended install."
+
+  if [ "$components_explicit" != 'true' ]; then
+    if ask_yn 'Install the logship database?' Y; then opt_database=true; fi
+    if ask_yn 'Install the logship frontend?' Y; then opt_frontend=true; fi
+    if ask_yn 'Install the logship agent?' Y; then opt_agent=true; fi
+  fi
+
+  was_set hostname || opt_hostname="$(ask 'Hostname' "$opt_hostname")"
+  if ! was_set path; then
+    opt_path="$(ask 'Install directory' "$opt_path")"
+    opt_path="${opt_path%%/}"
+  fi
+
+  if [ "$opt_database" = 'true' ]; then
+    was_set database-port || opt_database_port="$(ask_port 'Database listen port' "$opt_database_port")"
+    if ! was_set data-root; then
+      opt_data_root="$(ask 'Data directory' "$opt_data_root")"
+      opt_data_root="${opt_data_root%%/}"
+    fi
+  fi
+
+  if [ "$opt_frontend" = 'true' ]; then
+    was_set frontend-port || opt_frontend_port="$(ask_port 'Frontend listen port' "$opt_frontend_port")"
+  fi
+
+  if [ "$opt_agent" = 'true' ]; then
+    was_set account || opt_account="$(ask_guid 'Account GUID the agent ships to' "$opt_account")"
+    was_set registration-token || opt_registration_token="$(ask_secret 'Agent registration token (blank for none)' "$opt_registration_token")"
+  fi
+}
+
+was_interactive=false
+if is_interactive; then
+  was_interactive=true
+  interactive_config
+fi
+
+# Default install to true if none are specified (unattended run, no components chosen).
+if [ "$was_interactive" != 'true' ] && [ -z "$opt_agent" ] && [ -z "$opt_database" ] && [ -z "$opt_frontend" ]; then
   opt_agent=true
   opt_database=true
   opt_frontend=true
-  opt_cli=true
 fi
 
-service_exists() {
-  # shellcheck disable=SC2046,SC2143
-  if [ $(systemctl status "$1" 2>/dev/null | grep -Fq "Active:") ]; then
-    return 1
-  else
-    return 0
-  fi
-}
+if [ "$opt_agent" != 'true' ] && [ "$opt_database" != 'true' ] && [ "$opt_frontend" != 'true' ]; then
+  err "No components selected to install. Choose the agent, database, and/or frontend."
+fi
+
+# Sanitize the identifier values written into the JSON config. Hostnames, GUIDs,
+# and registration tokens (JWTs) never contain whitespace, so strip any that slipped
+# in — e.g. a trailing newline from `RTOKEN=$(cat token)` or a wrapped paste — which
+# would otherwise land as a raw newline inside a JSON string and break the config.
+# (Paths are left alone: they may legitimately contain spaces.)
+opt_hostname=$(printf '%s' "$opt_hostname" | tr -d '[:space:]')
+opt_account=$(printf '%s' "$opt_account" | tr -d '[:space:]')
+opt_registration_token=$(printf '%s' "$opt_registration_token" | tr -d '[:space:]')
+
+# Derive the backend URL (scheme-aware) and a bare host for display messages.
+# Accepts a pasted URL from both interactive and --hostname input.
+opt_backend_url="$(backend_url "$opt_hostname" "$opt_database_port")"
+display_host="$(clean_hostname "$opt_hostname")"
 
 ensure() {
   if ! "$@"; then err "command failed: $*"; fi
@@ -295,17 +512,23 @@ check_cmd() {
 }
 
 run_or_sudo() {
-  if "$@" 2>/dev/null; then
+  # Root: run directly. Non-root: go straight to sudo — trying the command bare
+  # first makes tools like systemctl spawn an interactive polkit password agent,
+  # which blocks or fails on passwordless-sudo hosts. No sudo: try directly and
+  # hope the target is user-writable.
+  # ponytail: sudo is used for every privileged op when non-root, even a
+  # user-writable target; fine for a system installer.
+  if [ "$(id -u)" -eq 0 ]; then
+    ensure "$@"
     verbose "Executed \"$*\"."
-    return 0
+  elif check_cmd sudo; then
+    info "Elevated permission required to execute \"$*\"."
+    ensure sudo "$@"
+    info "${cyan}[sudo]${normal} Executed \"$*\"."
+  elif "$@" 2>/dev/null; then
+    verbose "Executed \"$*\"."
   else
-    if [ "$(sudo -n true 2>/dev/null)" = "0" ]; then
-      err "Command failed: $*"
-    else
-      info "Elevated permission required to execute \"$*\"."
-      ensure sudo "$@"
-      info "${cyan}[sudo]${normal} Executed \"$*\"."
-    fi
+    err "Command failed and sudo is unavailable: $*"
   fi
 }
 
@@ -327,7 +550,7 @@ StandardError=journal
 [Install]
 WantedBy=multi-user.target
 EOF
-  sudo mv -f "$tempfile" "/lib/systemd/system/$1.service"
+  run_or_sudo mv -f "$tempfile" "/lib/systemd/system/$1.service"
 }
 
 write_agent_config() {
@@ -335,28 +558,73 @@ write_agent_config() {
   tempfile="$(mktemp -t "agent-config-XXXXXXXXXXXXXXXX")"
   cat <<EOF >"$tempfile"
 {
-  // Agent output configuration.
-  "Output": {
-    // Update your output endpoint here.
-    // This should match the host/port of your logship database.
-    "endpoint": "http://$opt_hostname:$opt_database_port",
-
-    // The account to upload to
-    "account": "00000000-0000-0000-0000-000000000000",
-
-    // Upload interval
-    "interval": "00:00:02",
+  "Kestrel": {
+    "Endpoints": {
+      "Default": {
+        "Url": "http://*:57421"
+      }
+    }
   },
-
-  // Agent source configuration
+  "Output": {
+    "endpoint": "$opt_backend_url",
+    "account": "$opt_account",
+    "interval": "00:00:01",
+    "maximumBufferSize": 40000,
+    "maximumFlushSize": 5000,
+    "health": {
+      "interval": "00:00:05"
+    },
+    "registration": {
+      "registrationToken": "$opt_registration_token"
+    }
+  },
+  "Logging": {
+    "LogLevel": {
+      "Default": "Information",
+      "System.Net.Http.HttpClient.Default": "Warning"
+    }
+  },
   "Sources": {
     "DiskInformation": {
       "enabled": true,
       "interval": "00:00:05"
     },
+    "HealthChecks": {
+      "enabled": true,
+      "targets": [
+        {
+          "endpoint": "$opt_backend_url",
+          "interval": "00:01:00",
+          "includeResponseHeaders": true,
+          "includeResponseBody": true
+        }
+      ]
+    },
     "JournalCtl": {
       "enabled": true,
       "flags": 0,
+      "includeFields": ["USERID"],
+      "filters": [
+        {
+          "matchAny": [
+            {
+              "hasField": "CONTAINER_NAME"
+            },
+            {
+              "fieldEquals": {
+                "field": "SYSLOG_IDENTIFIER",
+                "value": "Logship.Agent.ConsoleHost"
+              }
+            },
+            {
+              "fieldEquals": {
+                "field": "SYSLOG_IDENTIFIER",
+                "value": "sshd"
+              }
+            }
+          ]
+        }
+      ]
     },
     "NetworkInformation": {
       "enabled": true,
@@ -370,6 +638,10 @@ write_agent_config() {
       "enabled": true,
       "interval": "00:05:00"
     },
+    "Proc.Modules": {
+      "enabled": true,
+      "interval": "00:00:10"
+    },
     "ProcessInformation": {
       "enabled": true,
       "interval": "00:00:30"
@@ -382,6 +654,12 @@ write_agent_config() {
       "enabled": true,
       "port": 49999
     },
+    "Internals": {
+      "enabled": true,
+      "interval": "00:00:15",
+      "enableMetrics": true,
+      "enableTracing": true
+    }
   }
 }
 EOF
@@ -438,7 +716,8 @@ install_agent() {
     fi
 
     run_or_sudo systemctl enable "$service_name.service"
-    run_or_sudo systemctl start "$service_name.service"
+    # Don't auto-start the agent: let the user review/edit the config first.
+    # The final install message tells them how to start it.
   else
     verbose "Skipping installation of $service_name"
   fi
@@ -452,7 +731,7 @@ write_database_config() {
   cat <<EOF >"$tempfile"
 {
   "DataRoot": "$opt_data_root",
-  "ListenPort": "$opt_database_port",
+  "ListenPort": $opt_database_port,
   "agent": {
     "udpMetricsEndpoint": "127.0.0.1:49999"
   },
@@ -540,7 +819,7 @@ write_database_config() {
           "issuer": "logship",
           "audience": "logship",
           "signingKey": "Default signing key for your application. You should change this in a production environment."
-        },
+        }
       },
       "messengerService": {
         "enable": true
@@ -559,9 +838,9 @@ write_database_config() {
         "provision": true,
         "accounts": [
           {
-            "accountId": "00000000-0000-0000-0000-000000000000",
+            "accountId": "$opt_account",
             "accountName": "Default Account"
-          },
+          }
         ],
         "users": [
           {
@@ -582,7 +861,7 @@ write_database_config() {
                 ]
               }
             ]
-          },
+          }
         ]
       }
     },
@@ -681,9 +960,9 @@ write_frontend_config() {
     }
   },
   "ClientSettings": {
-    "BackendUrl": "http://$opt_hostname:$opt_database_port",
+    "BackendUrl": "$opt_backend_url",
     "MetricsInflowRootSchema": "logship.frontend.ui.",
-    "MetricsInflowAccount": "00000000-0000-0000-0000-000000000000",
+    "MetricsInflowAccount": "$opt_account"
   }
 }
 EOF
@@ -757,7 +1036,11 @@ write_uninstall() {
   tempfile="$(mktemp -t "uninstall-XXXXXXXXXXXXXXXX")"
   cat <<EOF >"$tempfile"
 #!/bin/sh
-read -p "Uninstall logship? (y/n): This will delete everything under \"$opt_path\"." choice
+if [ "\$(id -u)" -ne 0 ]; then
+  exec sudo "\$0" "\$@"
+fi
+printf '%s' "Uninstall logship? (y/n): This will delete everything under \"$opt_path\". "
+read -r choice
 case "\$choice" in
 [Yy]|[Yy][Ee][Ss])
   systemctl disable logship-agent.service
@@ -766,6 +1049,10 @@ case "\$choice" in
   systemctl stop logship-agent.service
   systemctl stop logship-database.service
   systemctl stop logship-frontend.service
+  rm -f /lib/systemd/system/logship-agent.service
+  rm -f /lib/systemd/system/logship-database.service
+  rm -f /lib/systemd/system/logship-frontend.service
+  systemctl daemon-reload
   rm -rf "$opt_path"
   echo "Done"
   exit 0
@@ -785,7 +1072,15 @@ EOF
 }
 
 main() {
-  need_cmds chmod echo find head mkdir mktemp rm rmdir sudo tee tr unzip wget
+  need_cmds chmod cp echo find grep head id mkdir mktemp mv rm rmdir sudo tee tr uname unzip wget
+  if [ -z "$opt_noinstall" ]; then
+    if [ "$operating_system" != "linux" ]; then
+      err "Service installation requires Linux with systemd. Re-run with --no-install on $operating_system."
+    fi
+
+    need_cmd systemctl
+  fi
+
   verbose_ship
   verbose "Root installation path: $opt_path"
 
@@ -801,16 +1096,12 @@ main() {
     install_frontend
   fi
 
-  # if [ "$opt_cli" = 'true' ]; then
-  #     install_logsh
-  # fi
-
   write_uninstall
 
   info "Installation complete."
-  info "Uninstall with \"${cyan}sudo $opt_path/uninstall.sh${normal}\"."
+  info "Uninstall by running \"${cyan}$opt_path/uninstall.sh${normal}\"."
   if [ "$opt_database" = 'true' ] && [ "$database_config_updated" = 'true' ]; then
-    info "Your database is accessible at http://$opt_hostname:$opt_database_port."
+    info "Your database is accessible at http://$display_host:$opt_database_port."
     if [ "$database_password_updated" = 'true' ]; then
       info "    Username: admin"
       info "    Password: $opt_database_password"
@@ -819,11 +1110,18 @@ main() {
   fi
   if [ "$opt_frontend" = 'true' ]; then
     if systemctl is-active --quiet "logship-frontend"; then
-      info "Your frontend is accessible at http://$opt_hostname:$opt_frontend_port"
+      info "Your frontend is accessible at http://$display_host:$opt_frontend_port"
     fi
   fi
-  if [ "$opt_hostname" != 'localhost' ]; then
-    info "If you'd like to make your instance externally accessible, don't forget to update firewall rules!"
+  if [ "$opt_agent" = 'true' ]; then
+    info "Agent shipping to $opt_backend_url (account $opt_account)."
+    info "Review/edit the agent config at \"${cyan}$opt_path/agent/appsettings.json${normal}\"."
+    if [ -z "$opt_noinstall" ]; then
+      info "Then start the agent with \"${cyan}sudo systemctl start logship-agent${normal}\"."
+    fi
+  fi
+  if [ "$display_host" != 'localhost' ]; then
+    info "If you'd like to make your instance externally accessible, see https://docs.logship.io/database/v0.0.1/config/#backend for security guidance"
   fi
 }
 
